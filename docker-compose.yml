@@ -44,19 +44,11 @@ services:
     command: server /data --console-address ":9001"
     networks:
       - twitter_network
-
-  minio-mc:
-    image: minio/mc:latest
-    container_name: minio-mc
-    depends_on:
-      - minio
-    entrypoint: ["/bin/sh", "/opt/minio/create-bucket.sh"]
-    env_file:
-      - ./minio/.env
-    volumes:
-      - ./minio/create-bucket.sh:/opt/minio/create-bucket.sh:ro
-    networks:
-      - twitter_network        
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
       
   kafka:
     image: apache/kafka:3.8.0
@@ -132,20 +124,6 @@ services:
       timeout: 10s
       retries: 5
 
-  debezium-setup:
-    image: curlimages/curl:latest
-    container_name: twitter_debezium_setup
-    depends_on:
-      debezium:
-        condition: service_healthy
-    volumes:
-      - ./debezium:/opt/debezium
-      - ./db/.env:/opt/debezium/.env:ro
-    networks:
-      - twitter_network
-    command: sh /opt/debezium/register-connector.sh
-    restart: "no"
-
   twitter_app:
     build: ./business_system
     container_name: twitter_data_app
@@ -203,8 +181,8 @@ services:
       - ./spark/.env
     volumes:
       - ./spark/app:/opt/spark-app
-      - ./spark/output:/opt/spark/output
-      - ./spark/ivy2:/home/spark/.ivy2
+      - ./data/spark/output:/opt/spark/output
+      - ./data/spark/ivy2:/home/spark/.ivy2
     networks:
       - twitter_network
     depends_on:
@@ -222,6 +200,35 @@ services:
           --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 \
           /opt/spark-app/app.py
 
+  minio-mc:
+    profiles: ["setup"]
+    image: minio/mc:latest
+    container_name: minio-mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/opt/minio/create-bucket.sh"]
+    env_file:
+      - ./minio/.env
+    volumes:
+      - ./minio/create-bucket.sh:/opt/minio/create-bucket.sh:ro
+    networks:
+      - twitter_network
+
+  debezium-setup:
+    profiles: ["setup"]
+    image: curlimages/curl:latest
+    container_name: twitter_debezium_setup
+    depends_on:
+      debezium:
+        condition: service_healthy
+    volumes:
+      - ./debezium:/opt/debezium
+      - ./db/.env:/opt/debezium/.env:ro
+    networks:
+      - twitter_network
+    command: sh /opt/debezium/register-connector.sh
+    restart: "no"
 networks:
   twitter_network:
     driver: bridge

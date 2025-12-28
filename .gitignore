@@ -1,7 +1,5 @@
 # Data directories (containers' persistent data)
 data/
-spark/ivy2/
-spark/output/
 
 # Environment files
 .env
